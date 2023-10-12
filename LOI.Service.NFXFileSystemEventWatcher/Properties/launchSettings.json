@@ -1,0 +1,11 @@
+﻿{
+  "profiles": {
+    "LOI.Service.NFXFileSystemEventWatcher": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
