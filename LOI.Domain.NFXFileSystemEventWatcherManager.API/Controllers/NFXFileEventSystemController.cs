@@ -1,16 +1,11 @@
 namespace LOI.Domain.NFXFileSystemEventWatcherManager.API.Controllers
 {
-    using LOI.Domain.NFXFileSystemEventWatcherManager.API.Data;
     using LOI.Domain.NFXFileSystemEventWatcherManager.API.Data.Entities;
+    using LOI.Domain.NFXFileSystemEventWatcherManager.API.Data;
     using LOI.Domain.NFXFileSystemEventWatcherManager.API.Hubs;
-
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.AspNetCore.SignalR;
-    using Microsoft.Extensions.FileSystemGlobbing.Internal;
-
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
+    using LOI.Domain.NFXFileSystemEventWatcherManager.API.Models;
 
     [ApiController]
     [Route("api/[controller]")]
@@ -29,84 +24,56 @@ namespace LOI.Domain.NFXFileSystemEventWatcherManager.API.Controllers
         [HttpGet("workers")]
         public ActionResult<IEnumerable<NFXFileSystemWorker>> GetWorkers()
         {
-            return this._context.NFXFileSystemWorkers.ToList();
+            return Ok(this._context.NFXFileSystemWorkers.ToList());
         }
 
         // Add a folder to a specific machine's watch group
         [HttpPost("workers/{machineName}/watchers")]
-        public async Task<ActionResult> AddWatcherForWorker(string machineName, WatchFolder watchFolder)
+        public async Task<ActionResult> AddWatcherForWorker(string machineName, FolderToWatchDTO watchFolderDto)
         {
-            if (watchFolder == null || machineName != watchFolder.Machine)
+            if (machineName == null || watchFolderDto == null)
             {
-                return BadRequest();
+                return BadRequest("Invalid request parameters.");
             }
 
-            watchFolder.IsActive = true; // Set IsActive to true when adding a watcher
+            var watchFolder = new WatchFolder
+            {
+                Machine = machineName,
+                Path = watchFolderDto.Path,
+                Filter = watchFolderDto.Filter,
+                IsActive = true,
+                DateAddedUTC = DateTime.UtcNow
+            };
 
             this._context.WatchFolders.Add(watchFolder);
-            this._context.SaveChanges();
+            await _context.SaveChangesAsync();
 
-            // Notify the worker to add the watcher
-            await _hubContext.Clients.Group(machineName).SendAsync("AddWatcher", watchFolder.Path, watchFolder.Filter);
+            await this._hubContext.Clients.Client(machineName).SendAsync("AddWatchFolder", watchFolder.Path, watchFolder.Filter);
 
-            return CreatedAtAction(nameof(GetWorkers), new { machineName = machineName }, watchFolder);
+            return NoContent();
         }
 
         // Remove a folder from a machine's watch group
-        [HttpDelete("workers/{machineName}/watchers/{watcherId}")]
-        public ActionResult DeleteWatcherForWorker(string machineName, int watcherId)
+        [HttpDelete("workers/{machineName}/watchers/{watchPath}")]
+        public async Task<ActionResult> DeleteWatcherForWorker(string machineName, string watchPath)
         {
-            var existingWatcher = this._context.WatchFolders.FirstOrDefault(f => f.Id == watcherId && f.Machine == machineName);
-            if (existingWatcher == null)
-            {
-                return NotFound();
-            }
-
-            // Notify the worker to delete the watcher
-            this._hubContext.Clients.Group(machineName).SendAsync("DeleteWatcher", existingWatcher.Path);
-
-            this._context.WatchFolders.Remove(existingWatcher);
-            this._context.SaveChanges();
-
+            await this._hubContext.Clients.Client(machineName).SendAsync("RemoveWatchFolder", machineName, watchPath);
             return NoContent();
         }
 
         // Pause watching a folder
-        [HttpPost("workers/{machineName}/watchers/{watcherId}/pause")]
-        public ActionResult PauseWatchingFolder(string machineName, int watcherId)
+        [HttpPost("workers/{machineName}/watchers/{watchPath}/pause")]
+        public async Task<ActionResult> PauseWatchingFolder(string machineName, string watchPath)
         {
-            var existingWatcher = this._context.WatchFolders.FirstOrDefault(f => f.Id == watcherId && f.Machine == machineName);
-
-            if (existingWatcher == null)
-            {
-                return NotFound();
-            }
-
-            existingWatcher.IsActive = false;
-            this._context.SaveChanges();
-
-            // Notify the worker to stop watching
-            this._hubContext.Clients.Group(machineName).SendAsync("StopWatcher", existingWatcher.Path);
-
+            await this._hubContext.Clients.Client(machineName).SendAsync("PauseWatchFolder", machineName, watchPath);
             return NoContent();
         }
 
         // Resume watching a folder
-        [HttpPost("workers/{machineName}/watchers/{watcherId}/resume")]
-        public ActionResult ResumeWatchingFolder(string machineName, int watcherId)
+        [HttpPost("workers/{machineName}/watchers/{watchPath}/resume")]
+        public async Task<ActionResult> ResumeWatchingFolder(string machineName, string watchPath)
         {
-            var existingWatcher = this._context.WatchFolders.FirstOrDefault(f => f.Id == watcherId && f.Machine == machineName);
-            if (existingWatcher == null)
-            {
-                return NotFound();
-            }
-
-            existingWatcher.IsActive = true;
-            this._context.SaveChanges();
-
-            // Notify the worker to start watching
-            this._hubContext.Clients.Group(machineName).SendAsync("StartWatcher", existingWatcher.Path);
-
+            await this._hubContext.Clients.Client(machineName).SendAsync("ResumeWatchFolder", machineName, watchPath);
             return NoContent();
         }
     }

@@ -1,95 +1,49 @@
 namespace LOI.Service.NFXFileSystemEventWatcher
 {
-    using Microsoft.Extensions.Hosting;
-    using Microsoft.Extensions.Logging;
-    using Microsoft.Extensions.DependencyInjection;
-    using System;
-    using System.IO;
-    using System.Threading;
-    using System.Threading.Tasks;
-    using LOI.Service.NFXFileSystemEventWatcher.Models;
     using Microsoft.AspNetCore.SignalR.Client;
+    using System.Threading;
 
     public class Worker : BackgroundService
     {
-        private readonly ILogger<Worker> _logger;
+        private readonly string _machineName;
+        private readonly HubConnection _hubConnection;
         private readonly AppStateManager _appStateManager;
-        private HubConnection _hubConnection;
-        private readonly TimeSpan _checkInInterval = TimeSpan.FromMinutes(5);
 
-        public Worker(ILogger<Worker> logger, AppStateManager appStateManager)
+        public Worker()
         {
-            this._logger = logger;
-            this._appStateManager = appStateManager;
+            this._machineName = Environment.MachineName;
+
             this._hubConnection = new HubConnectionBuilder()
-                .WithUrl($"https://localhost:7188/workerHub")
+                .WithUrl("https://localhost:7188/workerHub")
                 .Build();
 
-            InitializeHubMethods();
-        }
+            this._appStateManager = new AppStateManager(this._hubConnection);
 
-        private void InitializeHubMethods()
-        {
-            this._hubConnection.On<string, string>("AddWatcher", (path, filter) =>
+            this._hubConnection.Closed += async (error) =>
             {
-                this._appStateManager.AddWatcher(path, filter);
-            });
-
-            this._hubConnection.On<string>("StartWatcher", (path) =>
-            {
-                this._appStateManager.StartWatcher(path);
-            });
-
-            this._hubConnection.On<string>("StopWatcher", (path) =>
-            {
-                this._appStateManager.StopWatcher(path);
-            });
-
-            this._hubConnection.On<string>("DeleteWatcher", (path) =>
-            {
-                this._appStateManager.DeleteWatcher(path);
-            });
-        }
-
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-        {
-            stoppingToken.Register(() => OnStopping());
-
-            await ConnectAndInitializeFromAPI();
-
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                this._logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-                await Task.Delay(_checkInInterval, stoppingToken);
-
-                await CheckInWithAPI();
-            }
-        }
-
-        private async Task ConnectAndInitializeFromAPI()
-        {
-            if (this._hubConnection.State != HubConnectionState.Connected)
-            {
+                await Task.Delay(new Random().Next(0, 5) * 1000);
                 await this._hubConnection.StartAsync();
-                await this._hubConnection.SendAsync("InitializeWorker", Environment.MachineName);
+            };
+        }
+
+        public override async Task StartAsync(CancellationToken cancellationToken)
+        {
+            await this._hubConnection.StartAsync();
+
+            await this._hubConnection.InvokeAsync("InitializeWorker", _machineName);
+        }
+        protected override async Task ExecuteAsync(CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(10000, cancellationToken);
             }
         }
 
-        private async Task CheckInWithAPI()
+        public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            if (this._hubConnection.State == HubConnectionState.Connected)
-            {
-                await this._hubConnection.SendAsync("CheckIn", Environment.MachineName);
-            }
+            await this._hubConnection.DisposeAsync();
         }
 
-        private async void OnStopping()
-        {
-            if (this._hubConnection != null && this._hubConnection.State == HubConnectionState.Connected)
-            {
-                await this._hubConnection.StopAsync();
-                await this._hubConnection.DisposeAsync();
-            }
-        }
     }
 }

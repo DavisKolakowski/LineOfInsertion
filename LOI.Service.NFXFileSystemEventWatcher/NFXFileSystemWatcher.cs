@@ -1,31 +1,30 @@
-
 namespace LOI.Service.NFXFileSystemEventWatcher
 {
-    using System;
-    using System.IO;
-
     public class NFXFileSystemWatcher : IDisposable
     {
         private readonly FileSystemWatcher _watcher;
+        private readonly string _path;
+        private readonly string _filter;
 
         public NFXFileSystemWatcher(string path, string filter)
         {
-            this._watcher = new FileSystemWatcher(path, filter)
+            this._path = path;
+            this._filter = filter;
+
+            this._watcher = new FileSystemWatcher
             {
-                NotifyFilter = NotifyFilters.Attributes
-                              | NotifyFilters.CreationTime
-                              | NotifyFilters.DirectoryName
-                              | NotifyFilters.FileName
-                              | NotifyFilters.LastWrite
-                              | NotifyFilters.Security
-                              | NotifyFilters.Size
+                Path = this._path,
+                Filter = this._filter,
+                NotifyFilter = NotifyFilters.LastAccess 
+                    | NotifyFilters.LastWrite
+                    | NotifyFilters.FileName 
+                    | NotifyFilters.DirectoryName,
             };
 
-            this._watcher.Changed += OnChanged;
             this._watcher.Created += OnChanged;
+            this._watcher.Changed += OnChanged;
             this._watcher.Deleted += OnChanged;
             this._watcher.Renamed += OnRenamed;
-            this._watcher.Error += OnError;
         }
 
         public void Start()
@@ -33,40 +32,28 @@ namespace LOI.Service.NFXFileSystemEventWatcher
             this._watcher.EnableRaisingEvents = true;
         }
 
-        public void Stop()
+        public void Pause()
         {
             this._watcher.EnableRaisingEvents = false;
         }
 
-        private void OnChanged(object sender, FileSystemEventArgs e)
+        public void Resume()
         {
-            Console.WriteLine($"File changed: {e.FullPath} | Change type: {e.ChangeType}");
+            this._watcher.EnableRaisingEvents = true;
         }
 
-        private void OnRenamed(object sender, RenamedEventArgs e)
+        private void OnChanged(object source, FileSystemEventArgs e)
         {
-            Console.WriteLine($"File renamed from {e.OldFullPath} to {e.FullPath}");
+            Console.WriteLine($"File: {e.FullPath} {e.ChangeType}");
         }
 
-        private void OnError(object sender, ErrorEventArgs e)
+        private void OnRenamed(object source, RenamedEventArgs e)
         {
-            if (e.GetException() is InternalBufferOverflowException)
-            {
-                Console.WriteLine("Error: File system watcher internal buffer overflow at {0}", DateTime.Now);
-            }
-            else
-            {
-                   Console.WriteLine("Error: {0}", e.GetException().Message);
-            }
+            Console.WriteLine($"File: {e.OldFullPath} renamed to {e.FullPath}");
         }
 
         public void Dispose()
         {
-            this._watcher.Changed -= OnChanged;
-            this._watcher.Created -= OnChanged;
-            this._watcher.Deleted -= OnChanged;
-            this._watcher.Renamed -= OnRenamed;
-            this._watcher.Error -= OnError;
             this._watcher.Dispose();
         }
     }

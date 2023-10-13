@@ -1,54 +1,63 @@
 namespace LOI.Service.NFXFileSystemEventWatcher
 {
-    using LOI.Service.NFXFileSystemEventWatcher.Models;
-
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using System.Text;
-    using System.Threading.Tasks;
+    using Microsoft.AspNetCore.SignalR.Client;
+    using System.Collections.Concurrent;
 
     public class AppStateManager
     {
-        private readonly List<WatcherState> _watchers = new List<WatcherState>();
+        private readonly ConcurrentDictionary<string, NFXFileSystemWatcher> _watchers;
+        private readonly HubConnection _hubConnection;
 
-        public void AddWatcher(string path, string filter)
+        public AppStateManager(HubConnection hubConnection)
         {
-            if (!this._watchers.Any(w => w.Path == path))
+            this._watchers = new ConcurrentDictionary<string, NFXFileSystemWatcher>();
+            this._hubConnection = hubConnection;
+
+            this._hubConnection.On<string, string>("StartWatching", StartWatching);
+            this._hubConnection.On<string>("PauseWatching", PauseWatching);
+            this._hubConnection.On<string>("ResumeWatching", ResumeWatching);
+            this._hubConnection.On<string>("StopWatching", StopWatching);
+        }
+
+        public void StartWatching(string path, string filter = "*.*")
+        {
+            if (!this._watchers.ContainsKey(path))
             {
                 var watcher = new NFXFileSystemWatcher(path, filter);
-                this._watchers.Add(new WatcherState { Watcher = watcher, Path = path });
+                if (this._watchers.TryAdd(path, watcher))
+                {
+                    watcher.Start();
+                }
             }
         }
 
-        public void StartWatcher(string path)
+        public void PauseWatching(string path)
         {
-            var watcherState = this._watchers.FirstOrDefault(w => w.Path == path);
-            if (watcherState != null && !watcherState.IsActive)
+            if (this._watchers.TryGetValue(path, out var watcher))
             {
-                watcherState.Watcher.Start();
-                watcherState.IsActive = true;
+                watcher.Pause();
             }
         }
 
-        public void StopWatcher(string path)
+        public void ResumeWatching(string path)
         {
-            var watcherState = this._watchers.FirstOrDefault(w => w.Path == path);
-            if (watcherState != null && watcherState.IsActive)
+            if (this._watchers.TryGetValue(path, out var watcher))
             {
-                watcherState.Watcher.Stop();
-                watcherState.IsActive = false;
+                watcher.Resume();
             }
         }
 
-        public void DeleteWatcher(string path)
+        public void StopWatching(string path)
         {
-            var watcherState = this._watchers.FirstOrDefault(w => w.Path == path);
-            if (watcherState != null)
+            if (this._watchers.TryRemove(path, out var watcher))
             {
-                watcherState.Watcher.Dispose();
-                this._watchers.Remove(watcherState);
+                watcher.Dispose();
             }
+        }
+
+        public IEnumerable<string> GetActivePaths()
+        {
+            return this._watchers.Keys;
         }
     }
 }

@@ -1,5 +1,4 @@
-
-namespace LOI.Service.NFXFileSystemEventWatcher.Models
+namespace LOI.Service.NFXFileSystemEventWatcher
 {
     public class WatcherState
     {
