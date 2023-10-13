@@ -34,8 +34,16 @@ namespace LOI.Service.NFXFileSystemEventWatcher
                 .UseSerilog()
                 .ConfigureServices((hostContext, services) =>
                 {
+                    var hubUrl = hostContext.Configuration.GetSection("SignalR").GetValue<string>("HubUrl");
+
+                    if (hubUrl == null)
+                    {
+                        throw new ArgumentNullException(nameof(hubUrl));
+                    }
+
                     services.AddSingleton(new HubConnectionBuilder()
-                            .WithUrl("https://localhost:7188/workerHub")
+                            .WithUrl(hubUrl)
+                            .WithAutomaticReconnect()
                             .Build());
 
                     services.AddSingleton<ApplicationStateManager>();
