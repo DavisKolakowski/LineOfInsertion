@@ -1,5 +1,7 @@
 namespace LOI.Service.NFXFileSystemEventWatcher
 {
+    using Microsoft.AspNetCore.SignalR.Client;
+
     using Serilog;
 
     public class Program
@@ -32,8 +34,11 @@ namespace LOI.Service.NFXFileSystemEventWatcher
                 .UseSerilog()
                 .ConfigureServices((hostContext, services) =>
                 {
-                    services.AddSingleton<NFXFileSystemWatcher>();
-                    services.AddSingleton<AppStateManager>();
+                    services.AddSingleton(new HubConnectionBuilder()
+                            .WithUrl("https://localhost:7188/workerHub")
+                            .Build());
+
+                    services.AddSingleton<ApplicationStateManager>();
                     services.AddHostedService<Worker>();
                 });
     }
