@@ -46,7 +46,8 @@ namespace LOI.Service.NFXFileSystemEventWatcher
                             .WithAutomaticReconnect()
                             .Build());
 
-                    services.AddSingleton<ApplicationStateManager>();
+                    services.AddSingleton<FileWatchService>();
+                    services.AddSingleton<WatchServiceManager>();
                     services.AddHostedService<Worker>();
                 });
     }

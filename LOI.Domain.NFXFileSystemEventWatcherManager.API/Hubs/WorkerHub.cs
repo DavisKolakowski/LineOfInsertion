@@ -6,10 +6,12 @@
 
     public class WorkerHub : Hub
     {
+        private readonly ILogger<WorkerHub> _logger;
         private readonly LineOfInsertionDbContext _context;
 
-        public WorkerHub(LineOfInsertionDbContext context)
+        public WorkerHub(ILogger<WorkerHub> logger, LineOfInsertionDbContext context)
         {
+            this._logger = logger;
             this._context = context;
         }
 
@@ -35,15 +37,19 @@
             }
             await this._context.SaveChangesAsync();
 
-            var watchFolders = _context.WatchFolders.Where(f => f.Machine == machineName && f.IsActive).ToList();
+            var watchFolders = this._context.WatchFolders.Where(f => f.Machine == machineName).ToList();
 
             foreach (var watchFolder in watchFolders)
             {
-                await Clients.Caller.SendAsync("StartWatching", watchFolder.Path, watchFolder.Filter);
+                await Clients.Caller.SendAsync("AddWatcher", watchFolder.Path, watchFolder.Filter);
+                if (watchFolder.IsActive)
+                {
+                    await Clients.Caller.SendAsync("EnableWatcher", watchFolder.Path);
+                }
             }
         }
 
-        public async Task CheckIn(string machineName)
+        public async Task Heartbeat(string machineName)
         {
             var worker = this._context.NFXFileSystemWorkers.FirstOrDefault(w => w.Machine == machineName);
             if (worker != null)
@@ -54,87 +60,105 @@
             }
         }
 
-        public async Task AddWatchFolder(string machineName, string path)
+        public async Task AddWatchFolder(string machineName, string path, string? filter)
         {
+            var machine = this._context.NFXFileSystemWorkers.FirstOrDefault(w => w.Machine == machineName);
             var watchFolder = this._context.WatchFolders.FirstOrDefault(wf => wf.Machine == machineName && wf.Path == path);
 
-            if (watchFolder == null)
+            if (machine!.Connection != null)
             {
-                var newWatchFolder = new WatchFolder
+                if (watchFolder == null)
                 {
-                    Machine = machineName,
-                    Path = path,
-                    IsActive = true
-                };
-                this._context.WatchFolders.Add(newWatchFolder);
-                await this._context.SaveChangesAsync();
+                    await Clients.Client(machine.Connection).SendAsync("AddWatcher", path, filter);
+                    await Clients.Client(machine.Connection).SendAsync("EnableWatcher", path);
 
-                await Clients.Client(machineName).SendAsync("StartWatching", path);
-            }
-            else if (!watchFolder.IsActive)
-            {
-                watchFolder.IsActive = true;
-                this._context.Update(watchFolder);
-                await this._context.SaveChangesAsync();
+                    var newWatchFolder = new WatchFolder
+                    {
+                        Machine = machineName,
+                        Path = path,
+                        IsActive = true
+                    };
+                    this._context.WatchFolders.Add(newWatchFolder);
 
-                await Clients.Client(machineName).SendAsync("ResumeWatching", path);
-            }
-            else
-            {
-                await Clients.Caller.SendAsync("Notification", "A WatchFolder with the specified machine name and path is already active.");
-            }
-        }
+                    await this._context.SaveChangesAsync();
+                }
+                else if (!watchFolder.IsActive)
+                {
+                    watchFolder.IsActive = true;
+                    this._context.Update(watchFolder);
+                    await this._context.SaveChangesAsync();
 
-        public async Task RemoveWatchFolder(string machineName, string path)
-        {
-            var watchFolder = this._context.WatchFolders.FirstOrDefault(wf => wf.Machine == machineName && wf.Path == path);
-
-            if (watchFolder != null)
-            {
-                this._context.WatchFolders.Remove(watchFolder);
-                await this._context.SaveChangesAsync();
-
-                await Clients.Client(machineName).SendAsync("StopWatching", path);
-            }
-            else
-            {
-                await Clients.Caller.SendAsync("Notification", "A WatchFolder with the specified machine name and path does not exist.");
+                    await Clients.Client(machine.Connection).SendAsync("EnableWatcher", path);
+                }
+                else
+                {
+                    this._logger.LogInformation("A WatchFolder with the specified connection and path already exists.");
+                }
             }
         }
 
         public async Task PauseWatchFolder(string machineName, string path)
         {
+            var machine = this._context.NFXFileSystemWorkers.FirstOrDefault(w => w.Machine == machineName);
             var watchFolder = this._context.WatchFolders.FirstOrDefault(wf => wf.Machine == machineName && wf.Path == path);
 
-            if (watchFolder != null && watchFolder.IsActive)
+            if (machine!.Connection != null)
             {
-                watchFolder.IsActive = false;
-                this._context.Update(watchFolder);
-                await this._context.SaveChangesAsync();
+                if (watchFolder != null && watchFolder.IsActive)
+                {
+                    await Clients.Client(machine.Connection).SendAsync("DisableWatcher", path);
 
-                await Clients.Client(machineName).SendAsync("PauseWatching", path);
-            }
-            else
-            {
-                await Clients.Caller.SendAsync("Notification", "A WatchFolder with the specified machine name and path either does not exist or is already paused.");
+                    watchFolder.IsActive = false;
+                    this._context.Update(watchFolder);
+                    await this._context.SaveChangesAsync();
+                }
+                else
+                {
+                    this._logger.LogInformation("A WatchFolder with the specified machine name and path either does not exist or is already disabled.");
+                }
             }
         }
 
         public async Task ResumeWatchFolder(string machineName, string path)
         {
+            var machine = this._context.NFXFileSystemWorkers.FirstOrDefault(w => w.Machine == machineName);
             var watchFolder = _context.WatchFolders.FirstOrDefault(wf => wf.Machine == machineName && wf.Path == path);
 
-            if (watchFolder != null && !watchFolder.IsActive)
+            if (machine!.Connection != null)
             {
-                watchFolder.IsActive = true;
-                this._context.Update(watchFolder);
-                await this._context.SaveChangesAsync();
+                if (watchFolder != null && !watchFolder.IsActive)
+                {
+                    await Clients.Client(machine.Connection).SendAsync("EnableWatcher", path);
 
-                await Clients.Client(machineName).SendAsync("ResumeWatching", path);
+                    watchFolder.IsActive = true;
+                    this._context.Update(watchFolder);
+                    await this._context.SaveChangesAsync();                  
+                }
+                else
+                {
+                    this._logger.LogInformation("A WatchFolder with the specified machine name and path either does not exist or is already active.");
+                }
             }
-            else
+        }
+
+        public async Task RemoveWatchFolder(string machineName, string path)
+        {
+            var machine = this._context.NFXFileSystemWorkers.FirstOrDefault(w => w.Machine == machineName);
+            var watchFolder = this._context.WatchFolders.FirstOrDefault(wf => wf.Machine == machineName && wf.Path == path);
+
+            if (machine!.Connection != null)
             {
-                await Clients.Caller.SendAsync("Notification", "A WatchFolder with the specified machine name and path either does not exist or is already active.");
+                if (watchFolder != null)
+                {
+                    await Clients.Client(machine.Connection).SendAsync("RemoveWatcher", path);
+
+                    this._context.WatchFolders.Remove(watchFolder);
+                    await this._context.SaveChangesAsync();
+                }
+                else
+                {
+                    this._logger.LogInformation("A WatchFolder with the specified machine name and path does not exist.");
+                }
             }
         }
     }

@@ -5,7 +5,7 @@ VisualStudioVersion = 17.7.34031.279
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LOI.Service.NFXFileSystemEventWatcher", "LOI.Service.NFXFileSystemEventWatcher\LOI.Service.NFXFileSystemEventWatcher.csproj", "{77B5F54B-16AE-4763-A545-99915E572A35}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LOI.Domain.NFXFileSystemEventWatcherManager.API", "LOI.Domain.NFXFileSystemEventWatcherManager.API\LOI.Domain.NFXFileSystemEventWatcherManager.API.csproj", "{30511C9A-A1B1-4A2C-A0D2-A7E26B2F5D3D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LOI.Domain.NFXFileSystemEventWatcherManager.API", "LOI.Domain.NFXFileSystemEventWatcherManager.API\LOI.Domain.NFXFileSystemEventWatcherManager.API.csproj", "{30511C9A-A1B1-4A2C-A0D2-A7E26B2F5D3D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

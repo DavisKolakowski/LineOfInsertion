@@ -36,6 +36,12 @@ namespace LOI.Domain.NFXFileSystemEventWatcherManager.API.Controllers
                 return BadRequest("Invalid request parameters.");
             }
 
+            var connection = GetRemoteWorkerConnectionString(machineName);
+            if (connection == null)
+            {
+                return NotFound("Worker not found.");
+            }
+
             var watchFolder = new WatchFolder
             {
                 Machine = machineName,
@@ -45,10 +51,10 @@ namespace LOI.Domain.NFXFileSystemEventWatcherManager.API.Controllers
                 DateAddedUTC = DateTime.UtcNow
             };
 
+            await this._hubContext.Clients.Client(connection).SendAsync("AddWatchFolder", watchFolder.Path, watchFolder.Filter);
+
             this._context.WatchFolders.Add(watchFolder);
             await _context.SaveChangesAsync();
-
-            await this._hubContext.Clients.Client(machineName).SendAsync("AddWatchFolder", watchFolder.Path, watchFolder.Filter);
 
             return NoContent();
         }
@@ -57,7 +63,13 @@ namespace LOI.Domain.NFXFileSystemEventWatcherManager.API.Controllers
         [HttpDelete("workers/{machineName}/watchers/{watchPath}")]
         public async Task<ActionResult> DeleteWatcherForWorker(string machineName, string watchPath)
         {
-            await this._hubContext.Clients.Client(machineName).SendAsync("RemoveWatchFolder", machineName, watchPath);
+            var connection = GetRemoteWorkerConnectionString(machineName);
+            if (connection == null)
+            {
+                return NotFound("Worker not found.");
+            }
+
+            await this._hubContext.Clients.Client(connection).SendAsync("RemoveWatchFolder", machineName, watchPath);
             return NoContent();
         }
 
@@ -65,7 +77,13 @@ namespace LOI.Domain.NFXFileSystemEventWatcherManager.API.Controllers
         [HttpPost("workers/{machineName}/watchers/{watchPath}/pause")]
         public async Task<ActionResult> PauseWatchingFolder(string machineName, string watchPath)
         {
-            await this._hubContext.Clients.Client(machineName).SendAsync("PauseWatchFolder", machineName, watchPath);
+            var connection = GetRemoteWorkerConnectionString(machineName);
+            if (connection == null)
+            {
+                return NotFound("Worker not found.");
+            }
+
+            await this._hubContext.Clients.Client(connection).SendAsync("PauseWatchFolder", machineName, watchPath);
             return NoContent();
         }
 
@@ -73,8 +91,24 @@ namespace LOI.Domain.NFXFileSystemEventWatcherManager.API.Controllers
         [HttpPost("workers/{machineName}/watchers/{watchPath}/resume")]
         public async Task<ActionResult> ResumeWatchingFolder(string machineName, string watchPath)
         {
-            await this._hubContext.Clients.Client(machineName).SendAsync("ResumeWatchFolder", machineName, watchPath);
+            var connection = GetRemoteWorkerConnectionString(machineName);
+            if (connection == null)
+            {
+                return NotFound("Worker not found.");
+            }
+
+            await this._hubContext.Clients.Client(connection).SendAsync("ResumeWatchFolder", machineName, watchPath);
             return NoContent();
+        }
+
+        private string GetRemoteWorkerConnectionString(string machineName)
+        {
+            var worker = this._context.NFXFileSystemWorkers.FirstOrDefault(w => w.Machine == machineName);
+            if (worker!.Connection == null)
+            {
+                return null;
+            }
+            return worker.Connection;
         }
     }
 }
